@@ -80,6 +80,80 @@ In PostBuild phase we are just executing echo command that all execution is comp
 
 
 
+# STEPS To Follow Up 
+
+1. First create a Aws connection with the github repository in which all your code is exists. keep both the buildspec files for prod and dev env in root folder and create a folder `terraform-tf-file` and paste all tf files in it.
+
+2. Now Go to systems manager and select parameter store and create 2 paramters there. we are creating this parameters so that we can use our aws account access key and secret access key in which our resources are going to deploy. create one with `/CodeBuild/MY_AWS_ACCESS_KEY_ID` and choose secure string there and paste the access key id there and create 2nd with name `/CodeBuild/MY_AWS_SECRET_ACCESS_KEY` and paste secret access key. We are choosing these names beacause we already mentioned these names in our buildpec files under env block.
+
+3. Now create 2 dynamo db tables with the names which are metioned dev.conf and prod.conf and name the partion key as `LockId`and also create s3 bucket with same name mentioned in these conf files.
+
+
+4. Then go to Aws Codepipeline and create a new pieline. Choose github (version 2) for the source provider and then select the connection which you create recently and also choose the repo and branch.
+
+5. Make sure to choose this option (tick the box) `Start the pipeline on source code change`
+
+6. Choose AWS Codebuild for the build stage and create a new project. Name it as per your needs. Select `Managed Image` for enviorment image and select `Amazon Linux 2` for the operating system. Runtime will be standard and choose the latest image. For the service role choose the new service role and for th buildspec file enter the name of the dev buildspecfile which is `dev-buildspec.yaml` and enable the cloudwatch logs and click on `Continue to codepipeline`
+
+7. After selecting the `single build` click on next button.
+
+8. On the next step click on `skip the deploy stage` because we are only using the codebuild to deploy this app and create pipeline. (before clicking on create pipeline first make sure that in your both buildspec files under section `env` the TF_COMMAND: "apply" should be apply because we have to create the resource with apply command.
+
+9. Now you will see that your pipeline is started , first it will fetch the code from your github and then it will move to the 2nd stage which is build and it will failed becuase the iam role attached to codebuild has no permissions to access/read the systems managers parameters store. So now we need to provide the required permissions to the codebuild to read parameters. create a new policy which has read permissions for the parameters store and attach this policy to the iam role.
+
+10. After attaching the policy to the role of the codebuild project , go to pipeline and click on release change to initiate the pipeline again.
+
+11. It will take approx 10 mins and you can see that all the `dev` resources got deployed , you can monitor all the resources.
+
+URLs to access the app : 
+
+https://dev.jasmeetdevops.com/
+https://dev.jasmeetdevops.com/app1/index.html
+https://dev.jasmeetdevops.com/app1/metadata.html
+
+
+
+
+## Deploying Prod related resources 
+
+1. Next we need to deploy our resources in `prod` env. So for this got to `SNS` topic and create a new topic and subscription.
+
+2. Go to your pipeline and edit the pipeline. After the `Edit: build` add a stage & name it manual approval. Then click on `Add action group` and name the action and for the action provider choose the `manual approval` and under `SNS` choose the topic which you created at first step and click on `done`.
+
+3. Now after the EDIT: manual , add another stage in the last and name it `prod-build`. Click on the add action group and give it a name and for the `action provider` choose `AWS Codebuild` and choose/click on the `Create New project` and it will take you to the codebuild page to create a project.
+
+4. Create this new project with name `prod-build` and choose all the settings as we created our previous first project. And for the `buildspec file` make sure you have to name it `prod-buildspec.yaml` because we are now using the prod env. click on create project. When this project will get created , got the `IAM role` of this new project and attatch the ssm read policy which we created priviously for our dev project so that this role also have the required permissions to read the parameters form system managers.
+
+5. Then you will be redirected to your pipeline page and click on done. Now you stages have been added and click on `save` button to save these changes. 
+
+6. Click on `Release Change` and monitor the pipeline. First it will fetch from github and then it will go the build stage which is our already deployed dev env and after this it will go the `manual approval` stage , this this the stage where we have to approve it manually to deploy the `Prod` anv as well.
+
+7. When your pipeline passes the dev build stage it stay on manual approval stage , you can click on review and add optional comments and approve this and this will pass to the build your prod env.
+
+8. Now you can sse that all the resources for your dev and prod env with differnet names should be created successfully, Prod app can be accessible at below URLs: 
+
+
+https://prod.jasmeetdevops.com/
+https://prod.jasmeetdevops.com/app1/index.html
+https://prod.jasmeetdevops.com/app1/metadata.html
+
+## You can check the tfstate files are stored in s3 bucket in specific env folder --- dev and prod
+
+## Destroying the enviorments
+
+1. Now we are going to destroy the our resources.
+
+2. For this got to your github repo and in both buildspec files comment the line TF_COMMAND: "apply" and add a new line under it 
+TF_COMMAND: "destroy". This line should be in your both prod and dev buildspec files.
+
+3. After making the changes , commit and push the changes and you will see that the your pipeline will trigger again and this will destroy all the resources which are created priviously.(Make sure to approve the `manual approval stage` after the dev build stage)
+
+4. Make sure all the resources got deleted. If , Yes , then delete your pipeline , codebuild project , s3 bucket , SNS topic and AWS connection for github. Also Delete `Dynamo db` tables and `Parameters` in `Systems Managers`..
+
+
+## Thanks for follow up.
+
+
 
 
 
